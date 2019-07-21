@@ -5,24 +5,29 @@ class AbletonPush
     @sonic_pi = sonic_pi
     
     @color_grid = Array.new(8) { |i| Array.new(8) { |j| PadColorPallete.black } }
-    @old_color_grid = Array.new(8) { |i| Array.new(8) { |j| PadColorPallete.black } }
+    @second_strip = Array.new(8) { |i| Array.new(8) { |j| SecondStripColorPallete.black } }
 
     clear()
     clear_display()
     write_display(0, 0, "Sonic Push")
     
-    @note_callbacks = []
+    @pad_callbacks = []
     @control_callbacks = []
+    @note_callbacks = []
     
-    @show_tick = true
+    @show_tick = false
     
     @sonic_pi.in_thread.call do
       @sonic_pi.loop.call do
         @sonic_pi.use_real_time.call
         note, velocity = @sonic_pi.sync.call '/midi/ableton_push_user_port/1/1/note_on'
         if [*36..99].include? note
-          @note_callbacks.each do | callback |
+          @pad_callbacks.each do | callback |
             callback.call (note - 36) / 8, (note - 36) % 8, velocity
+          end
+        else
+          @note_callbacks.each do | callback |
+            callback.call note, velocity
           end
         end
       end
@@ -48,8 +53,15 @@ class AbletonPush
   end
   
   def color_second_strip(column, color)
-    pad = column + 20
-    @sonic_pi.midi_cc.call pad, color
+    if @second_strip[column] != color
+      @second_strip[column] = color
+      pad = column + 20
+      @sonic_pi.midi_cc.call pad, color
+    end
+  end
+
+  def color_note(note, color)
+    @sonic_pi.midi_cc.call note, color
   end
   
   def color_pad(pad, color, force)
@@ -76,12 +88,16 @@ class AbletonPush
     end
   end
   
-  def register_note_callback(callback)
-    @note_callbacks.push(callback)
+  def register_pad_callback(callback)
+    @pad_callbacks.push(callback)
   end
   
   def register_control_callback(callback)
     @control_callbacks.push(callback)
+  end
+
+  def register_note_callback(callback)
+    @note_callbacks.push(callback)
   end
   
   def clear

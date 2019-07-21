@@ -23,7 +23,7 @@ class DrumMachine
       Drum.new(:drum_cymbal_open, PadColorPallete.violet, Array.new(8) { |i| DrumNote.new(false, 4) })
     ]
     
-    @push.clear
+    @is_active_mode = false
     
     @sonic_pi.live_loop.call :drum do
       @sonic_pi.use_bpm.call Clock.bpm
@@ -39,8 +39,17 @@ class DrumMachine
       end
     end
     
-    @push.register_note_callback(method(:note_callback))
+    @push.register_pad_callback(method(:pad_callback))
     @push.register_control_callback(method(:control_callback))
+  end
+  
+  def is_active_mode=is_active_mode
+    if is_active_mode
+      switch_mode(:DRUM_NOTE_MODE)
+    else
+      @push.show_tick = false
+    end
+    @is_active_mode = is_active_mode
   end
   
   def switch_mode(mode)
@@ -68,7 +77,11 @@ class DrumMachine
     end
   end
   
-  def note_callback(row, column, velocity)
+  def pad_callback(row, column, velocity)
+    if not @is_active_mode
+      return
+    end
+    
     case @mode
     when :DRUM_NOTE_MODE
       drum = @drums[row]
@@ -84,6 +97,10 @@ class DrumMachine
   end
   
   def control_callback(note, velocity)
+    if not @is_active_mode
+      return
+    end
+    
     if [*36..43].include? note and velocity == 127
       drum_edit = note - 36
       if (@current_drum_edit == drum_edit and @mode == :DRUM_EDIT_MODE)

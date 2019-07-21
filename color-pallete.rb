@@ -60,6 +60,16 @@ class SecondStripColorPallete
   end
 end
 
-class ThirdStipColorPallete
-  
+class NoteColorPallete
+  def self.off 
+    return 0
+  end
+
+  def self.dim
+    return 1
+  end
+
+  def self.lit
+    return 4
+  end
 end
