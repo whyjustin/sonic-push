@@ -6,7 +6,6 @@ class Clock
     print_bpm()
     
     @enable = false
-    @monitor_active = false
     @beats = [2,0,1,0,1,0,1,0]
     
     @push.register_control_callback(method(:control_callback))
@@ -20,11 +19,6 @@ class Clock
           beat = @beats[i]
           sonic_pi.sample.call :elec_tick, amp: 1, rate: 0.8 if beat == 1
           sonic_pi.sample.call :elec_tick, amp: 2 if beat == 2
-        end
-        if @monitor_active
-          sonic_pi.live_audio.call :mon, stereo: true
-        else
-          sonic_pi.live_audio.call :mon, :stop
         end
         sonic_pi.sleep.call 0.5
       end
@@ -46,8 +40,6 @@ class Clock
     elsif velocity == 127
       if note == 9
         @enable = !@enable
-      elsif note == 3
-        @monitor_active = !@monitor_active
       end
     end
   end

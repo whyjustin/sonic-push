@@ -16,8 +16,7 @@ class PadColorPallete
   def self.green
     return Color.new(0, 255, 0)
   end
-  
-  
+    
   def self.red
     return Color.new(255, 0, 0)
   end
@@ -47,8 +46,20 @@ class SecondStripColorPallete
   def self.black
     return 0
   end
-  
+
+  def self.orange
+    return 10
+  end
+
+  def self.orange_blink_fast
+    return 12
+  end
+
   def self.red
     return 5
   end
+end
+
+class ThirdStipColorPallete
+  
 end

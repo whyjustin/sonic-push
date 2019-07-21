@@ -3,11 +3,13 @@ require_relative 'color-pallete.rb'
 class AbletonPush
   def initialize(sonic_pi)
     @sonic_pi = sonic_pi
-    clear_display()
-    write_display(0, 0, "Sonic Push")
     
     @color_grid = Array.new(8) { |i| Array.new(8) { |j| PadColorPallete.black } }
     @old_color_grid = Array.new(8) { |i| Array.new(8) { |j| PadColorPallete.black } }
+
+    clear()
+    clear_display()
+    write_display(0, 0, "Sonic Push")
     
     @note_callbacks = []
     @control_callbacks = []
@@ -38,17 +40,23 @@ class AbletonPush
   end
   
   def color_row_column(row, column, color)
-    color_pad row * 8 + column, color
+    color_pad row * 8 + column, color, false
+  end
+
+  def force_color_row_column(row, column, color)
+    color_pad row * 8 + column, color, true
   end
   
   def color_second_strip(column, color)
-    pad = column + 102
+    pad = column + 20
     @sonic_pi.midi_cc.call pad, color
   end
   
-  def color_pad(pad, color)
-    @color_grid[pad / 8][pad % 8] = color
-    @sonic_pi.midi_sysex.call 240,71,127,21,4,0,8,pad,0,color.red/16,color.red%16,color.green/16,color.green%16,color.blue/16,color.blue%16,247
+  def color_pad(pad, color, force)
+    if @color_grid[pad / 8][pad % 8] != color || force
+      @color_grid[pad / 8][pad % 8] = color
+      @sonic_pi.midi_sysex.call 240,71,127,21,4,0,8,pad,0,color.red/16,color.red%16,color.green/16,color.green%16,color.blue/16,color.blue%16,247
+    end
   end
   
   def tick(tick_count)
@@ -79,9 +87,10 @@ class AbletonPush
   def clear
     @color_grid.each_with_index do | row, row_index |
       row.each_with_index do | column, column_index |
-        color_row_column row_index, column_index, PadColorPallete.black
+        force_color_row_column row_index, column_index, PadColorPallete.black
       end
     end
+    clear_second_strip()
   end
   
   def clear_second_strip
@@ -103,12 +112,12 @@ class AbletonPush
   end
 
   def clear_display_section(row, display_column)
-    write_display row, display_column * 17, ' ' * 17
+    write_display row, display_column, ' ' * 17
   end
   
-  def write_display(row, column, string)
+  def write_display(row, display_column, string)
     string.split('').each_with_index do | char, index |
-      @sonic_pi.midi_sysex.call 240, 71, 127, 21, 24 + row, 0, 2, column + index, char.ord, 247, on: true
+      @sonic_pi.midi_sysex.call 240, 71, 127, 21, 24 + row, 0, 2, display_column * 17 + index, char.ord, 247, on: true
     end
   end
 end
