@@ -1,6 +1,6 @@
 Color = Struct.new(:red, :green, :blue)
 
-class PadColorPallete
+class PadColorPalette
   def self.black
     return Color.new(0, 0, 0)
   end
@@ -42,7 +42,7 @@ class PadColorPallete
   end
 end
 
-class SecondStripColorPallete
+class FirstStripColorPalette
   def self.black
     return 0
   end
@@ -60,7 +60,17 @@ class SecondStripColorPallete
   end
 end
 
-class NoteColorPallete
+class SecondStripColorPalette
+  def self.black
+    return 0
+  end
+
+  def self.white
+    return 3
+  end
+end
+
+class NoteColorPalette
   def self.off 
     return 0
   end

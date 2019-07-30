@@ -10,7 +10,8 @@ require '~/whyjustin/sonic-push/mode-switcher.rb'
 push = AbletonPush.new(sonic_pi)
 
 drum_machine = DrumMachine.new(sonic_pi, push)
-session_machine = SessionMachine.new(sonic_pi, push)
+sampler = Sampler.new(sonic_pi, push)
+session_machine = SessionMachine.new(sonic_pi, push, sampler)
 metronome = Clock.new(sonic_pi, push)
 
 ModeSwitcher.new(sonic_pi, push, session_machine, drum_machine)

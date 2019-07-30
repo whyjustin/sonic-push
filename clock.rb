@@ -1,5 +1,5 @@
 class Clock
-  @@bpm = 60
+  @@bpm = 90
   
   def initialize(sonic_pi, push)
     @push = push

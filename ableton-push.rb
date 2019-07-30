@@ -1,21 +1,22 @@
-require_relative 'color-pallete.rb'
+require_relative 'color-palette.rb'
 
 class AbletonPush
   def initialize(sonic_pi)
     @sonic_pi = sonic_pi
     
-    @color_grid = Array.new(8) { |i| Array.new(8) { |j| PadColorPallete.black } }
-    @second_strip = Array.new(8) { |i| Array.new(8) { |j| SecondStripColorPallete.black } }
+    @color_grid = Array.new(8) { |i| Array.new(8) { |j| PadColorPalette.black } }
+    @first_strip = Array.new(8) { |i| Array.new(8) { |j| FirstStripColorPalette.black } }
+    @second_strip = Array.new(8) { |i| Array.new(8) { |j| SecondStripColorPalette.black } }
 
     clear()
+    clear_first_strip()
+    clear_second_strip()
     clear_display()
     write_display(0, 0, "Sonic Push")
     
     @pad_callbacks = []
     @control_callbacks = []
     @note_callbacks = []
-    
-    @show_tick = false
     
     @sonic_pi.in_thread.call do
       @sonic_pi.loop.call do
@@ -52,10 +53,18 @@ class AbletonPush
     color_pad row * 8 + column, color, true
   end
   
-  def color_second_strip(column, color)
+  def color_first_strip(column, color)
     if @second_strip[column] != color
       @second_strip[column] = color
       pad = column + 20
+      @sonic_pi.midi_cc.call pad, color
+    end
+  end
+
+  def color_second_strip(column, color)
+    if @first_strip[column] != color
+      @first_strip[column] = color
+      pad = column + 102
       @sonic_pi.midi_cc.call pad, color
     end
   end
@@ -68,23 +77,6 @@ class AbletonPush
     if @color_grid[pad / 8][pad % 8] != color || force
       @color_grid[pad / 8][pad % 8] = color
       @sonic_pi.midi_sysex.call 240,71,127,21,4,0,8,pad,0,color.red/16,color.red%16,color.green/16,color.green%16,color.blue/16,color.blue%16,247
-    end
-  end
-  
-  def tick(tick_count)
-    if @show_tick
-      tick_count = tick_count % 8
-      @color_grid.each_with_index do | row, row_index |
-        8.times do | column_index |
-          if row[column_index] == PadColorPallete.grey
-            color_row_column row_index, column_index, PadColorPallete.black
-          end
-        end
-        
-        if row[tick_count] == PadColorPallete.black
-          color_row_column row_index, tick_count, PadColorPallete.grey
-        end
-      end
     end
   end
   
@@ -103,20 +95,21 @@ class AbletonPush
   def clear
     @color_grid.each_with_index do | row, row_index |
       row.each_with_index do | column, column_index |
-        force_color_row_column row_index, column_index, PadColorPallete.black
+        force_color_row_column row_index, column_index, PadColorPalette.black
       end
     end
-    clear_second_strip()
   end
   
-  def clear_second_strip
+  def clear_first_strip
     8.times do | i |
-      color_second_strip i, SecondStripColorPallete.black
+      color_second_strip i, FirstStripColorPalette.black
     end
   end
-  
-  def show_tick=show_tick
-    @show_tick = show_tick
+
+  def clear_second_strip
+    8.times do | i |
+      color_second_strip i, SecondStripColorPalette.black
+    end
   end
   
   def clear_display()
