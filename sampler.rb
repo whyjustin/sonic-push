@@ -8,7 +8,7 @@ class Sampler
     @sonic_pi = sonic_pi
     @push = push
     
-    @recording_grid = Array.new(4) { |i| Array.new(8) { |j| SamplePad.new(nil, false, nil, 4.0, i, j) } }
+    @recording_grid = Array.new(4) { |i| Array.new(8) { |j| SamplePad.new(nil, false, nil, 4.0, i + 2, j) } }
     @recording_sample = nil
     @editing_sample = nil
     @monitor_active = false

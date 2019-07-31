@@ -4,14 +4,15 @@ sonic_pi = SonicPiWrapper.new(method(:in_thread), method(:loop), method(:live_lo
 require '~/whyjustin/sonic-push/ableton-push.rb'
 require '~/whyjustin/sonic-push/clock.rb'
 require '~/whyjustin/sonic-push/drum-machine.rb'
+require '~/whyjustin/sonic-push/sampler.rb'
 require '~/whyjustin/sonic-push/session-machine.rb'
-require '~/whyjustin/sonic-push/mode-switcher.rb'
 
 push = AbletonPush.new(sonic_pi)
 
 drum_machine = DrumMachine.new(sonic_pi, push)
 sampler = Sampler.new(sonic_pi, push)
-session_machine = SessionMachine.new(sonic_pi, push, sampler)
+session_machine = SessionMachine.new(sonic_pi, push, sampler, drum_machine)
 metronome = Clock.new(sonic_pi, push)
 
-ModeSwitcher.new(sonic_pi, push, session_machine, drum_machine)
+TR808 = "path/to/kit"
+drum_machine.load_kit TR808
