@@ -1,14 +1,15 @@
 require_relative 'color-palette.rb'
 require_relative 'session-machine.rb'
 
+
 class Sampler
-  SamplePad = Struct.new(:buffer, :is_playing, :bars, :amp, :row, :column)
+  SamplePad = Struct.new(:buffer, :is_playing, :bars, :amp, :mode, :row, :column)
   
   def initialize(sonic_pi, push)
     @sonic_pi = sonic_pi
     @push = push
     
-    @recording_grid = Array.new(4) { |i| Array.new(8) { |j| SamplePad.new(nil, false, nil, 4.0, i + 2, j) } }
+    @recording_grid = Array.new(4) { |i| Array.new(8) { |j| SamplePad.new(nil, false, nil, 2.0, :PLAY, i + 2, j) } }
     @recording_sample = nil
     @editing_sample = nil
     @monitor_active = false
@@ -76,7 +77,32 @@ class Sampler
           if bar % sample.bars == 0 and sample != @recording_sample
             if sample.buffer != nil and sample.is_playing
               color_sample sample, PadColorPalette.green
-              @sonic_pi.sample.call sample.buffer, amp: sample.amp
+              retrigger = SessionMachine.retrigger
+              if retrigger != nil and (@editing_sample == nil or sample == @editing_sample)
+                @sonic_pi.in_thread.call do
+                  steps = 8.0 * sample.bars
+                  (steps / retrigger).times do
+                    @sonic_pi.sample.call sample.buffer, amp: sample.amp, start: 0, finish: retrigger / steps
+                    @sonic_pi.sleep.call retrigger / 2.0
+                  end
+                end
+              else
+                if [:PLAY, :BACK].include? sample.mode
+                  @sonic_pi.sample.call sample.buffer, amp: sample.amp, rate: sample.mode == :PLAY ? 1 : -1
+                else
+                  @sonic_pi.in_thread.call do
+                    steps = 4 * sample.bars
+                    steps.times do | step |
+                      slice_idx = rand(steps - 1)
+                      slice_size = 1.0 / steps
+                      start = slice_idx * slice_size
+                      finish = start + slice_size
+                      @sonic_pi.sample.call sample.buffer, amp: sample.amp, start: start, finish: finish, rate: (sample.mode == :SLICE or (sample.mode == :SLIDE_RAND and rand(1) == 1) ? 1 : -1)
+                      @sonic_pi.sleep.call 1
+                    end
+                  end
+                end
+              end
             elsif
               color_sample sample, PadColorPalette.black
             end
@@ -93,7 +119,12 @@ class Sampler
     
     if note == 71
       if @editing_sample != nil
-        @editing_sample.amp = @editing_sample.amp + (velocity == 1 ? 0.01 : -0.01)
+        @editing_sample.amp = (@editing_sample.amp + (velocity == 1 ? 0.01 : -0.01)).round(2)
+        print_editing_menu()
+      end
+    elsif note == 72
+      if @editing_sample != nil
+        @editing_sample.mode = next_mode(@editing_sample.mode)
         print_editing_menu()
       end
     elsif velocity = 127
@@ -101,6 +132,21 @@ class Sampler
         @monitor_active = !@monitor_active
         @sonic_pi.cue.call :monitor_cue
       end
+    end
+  end
+  
+  def next_mode(mode)
+    case mode
+    when :PLAY
+      return :SLICE
+    when :SLICE
+      return :SLICE_BACK
+    when :SLICE_BACK
+      return :SLICE_RAND
+    when :SLICE_RAND
+      return :BACK
+    when :BACK
+      return :PLAY
     end
   end
   
@@ -113,16 +159,27 @@ class Sampler
           end
         end
       end
+    else
+      clear_editing_sample()
     end
     @is_active_mode = is_active_mode
   end
   
-  def arm_or_play(row, column)
+  def clear_editing_sample
+    @editing_sample = nil
+  end
+  
+  def arm_edit_or_play(row, column)
     sample = @recording_grid[row][column]
-    if sample.buffer
+    if sample != @editing_sample
+      @editing_sample = sample
+      print_editing_menu()
+    elsif sample.buffer
       color_sample sample, PadColorPalette.grey
-      editing_sample = sample
+      @editing_sample = sample
       sample.is_playing = !sample.is_playing
+      print_editing_menu()
+      
     else
       record row, column
     end
@@ -154,9 +211,17 @@ class Sampler
       return
     end
     
+    clear_editing_menu()
     if @editing_sample != nil
-      @push.clear_display_section(3, 1)
-      @push.write_display(3, 1, "Amp #{@editing_sample.amp}")
+      @push.write_display(0, 1, "Sample")
+      @push.write_display(1, 1, "Amp #{@editing_sample.amp}")
+      @push.write_display(2, 1, "Mode #{@editing_sample.mode.to_s}")
     end
+  end
+  
+  def clear_editing_menu()
+    @push.clear_display_section(0, 1)
+    @push.clear_display_section(1, 1)
+    @push.clear_display_section(2, 1)
   end
 end

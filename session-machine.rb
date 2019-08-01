@@ -1,10 +1,15 @@
 require_relative 'clock.rb'
+require_relative 'helper.rb'
+
 
 class SessionMachine
+  Mixer = Struct.new(:hpf, :lpf)
+  
   @@recording_bar_options = 4
   @@current_bar = 0
   @@viewing_bar = 0
   @@recording_bar_power = 0
+  @@retrigger = nil
   
   def self.recording_bar_options
     return @@recording_bar_options
@@ -34,12 +39,20 @@ class SessionMachine
     return @@viewing_bar
   end
   
+  def self.retrigger
+    return @@retrigger
+  end
+  
   def initialize(sonic_pi, push, sampler, drum_machine)
     @sonic_pi = sonic_pi
     @push = push
     @sampler = sampler
     @drum_machine = drum_machine
     @push.clear
+    
+    @mixer = Mixer.new(0, 131)
+    @sonic_pi.set_mixer_control.call lpf: @mixer.lpf
+    @sonic_pi.set_mixer_control.call hpf: @mixer.hpf
     
     @recording_bar_highlights = [
       [ [ 0 ] ],
@@ -50,16 +63,14 @@ class SessionMachine
     set_recording_bar_power 0
     
     @mode = :SESSION_MODE
+    print_editing_menu()
     
-    @sonic_pi.live_loop.call "play" do
+    @sonic_pi.live_loop.call :session_clock do
       @@current_bar = @@current_bar == 2 ** (@@recording_bar_options - 1) ? 1 : @@current_bar + 1
       color_recording_bars()
       
       @sonic_pi.use_bpm.call Clock.bpm
       @sonic_pi.sync.call :master_cue
-      
-      sampler.play @@current_bar
-      drum_machine.play @@current_bar
       
       8.times do | i |
         @push.clear_second_strip()
@@ -69,8 +80,17 @@ class SessionMachine
       end
     end
     
+    @sonic_pi.live_loop.call :sampler do
+      @sonic_pi.use_bpm.call Clock.bpm
+      @sonic_pi.sync.call :master_cue
+      
+      sampler.play @@current_bar
+    end
+    
     @push.register_pad_callback(method(:pad_callback))
+    @push.register_note_callback(method(:note_callback))
     @push.register_control_callback(method(:control_callback))
+    @push.register_pitch_callback(method(:pitch_callback))
   end
   
   def pad_callback(row, column, velocity)
@@ -78,25 +98,25 @@ class SessionMachine
       return
     end
     
-    if [*0..1].include? row
+    if row == 0
       drum_track_index = row * 8 + column
       drum_track = @drum_machine.drum_tracks[drum_track_index]
       if !drum_track.is_playing
         if drum_track.bars != nil
           set_recording_bar_power (Math::log(drum_track.bars) / Math::log(2)).to_i - 1
         end
-
+        
         @drum_machine.edit drum_track_index
         switch_mode :DRUM_MODE
       end
       @drum_machine.toggle_play drum_track_index
     elsif [*2..5].include? row
-      @sampler.arm_or_play(row - 2, column)
+      @sampler.arm_edit_or_play(row - 2, column)
     end
   end
   
   def control_callback(note, velocity)
-    if velocity = 127
+    if velocity == 127
       if [*20..20 + @@recording_bar_options].include? note
         power = (note - 19) - 1
         set_recording_bar_power power
@@ -105,8 +125,39 @@ class SessionMachine
       elsif note == 45
         set_viewing_bar(@@viewing_bar < SessionMachine.recording_bars - 1 ? @@viewing_bar + 1 : @@viewing_bar)
       elsif note == 51
+        @sampler.clear_editing_sample()
         switch_mode :SESSION_MODE
       end
+    end
+    if note == 78
+      @mixer.lpf = Helper.within(@mixer.lpf + (velocity == 1 ? 1.0 : -1.0), 0, 131).round(0)
+      @sonic_pi.set_mixer_control.call lpf: @mixer.lpf
+      print_editing_menu()
+    elsif note == 79
+      @mixer.hpf = Helper.within(@mixer.hpf + (velocity == 1 ? 1.0 : -1.0), 0, 131).round(0)
+      @sonic_pi.set_mixer_control.call hpf: @mixer.hpf
+      print_editing_menu()
+    end
+  end
+
+  def note_callback(note, velocity)
+    if velocity == 0 and note == 12
+      @@retrigger = nil
+    end
+  end
+  
+  def pitch_callback(pitch)
+    # Pitch defaults to 8192 when letting go
+    if pitch == 8192
+      return
+    elsif pitch > 10000
+      @@retrigger = 8
+    elsif pitch > 6600
+      @@retrigger = 4
+    elsif pitch > 3300
+      @@retrigger = 2
+    else
+      @@retrigger = 1
     end
   end
   
@@ -160,11 +211,27 @@ class SessionMachine
       @push.color_note 51, NoteColorPalette.dim
     when :SESSION_MODE
       @push.clear
+      @drum_machine.clear_editing_menu()
       @sonic_pi.sleep.call 0.1
       
+      print_editing_menu()
       @drum_machine.is_active_mode = false
       @sampler.is_active_mode = true
       @push.color_note 51, NoteColorPalette.lit
     end
+  end
+  
+  def print_editing_menu()
+    clear_editing_menu()
+    @sonic_pi.sleep.call 0.1
+    @push.write_display(0, 3, "Global")
+    @push.write_display(1, 3, "LPF #{@mixer.lpf}")
+    @push.write_display(2, 3, "HPF #{@mixer.hpf}")
+  end
+  
+  def clear_editing_menu()
+    @push.clear_display_section(0, 3)
+    @push.clear_display_section(1, 3)
+    @push.clear_display_section(2, 3)
   end
 end

@@ -11,12 +11,17 @@ class AbletonPush
     clear()
     clear_first_strip()
     clear_second_strip()
-    clear_display()
+    [*0..3].each do | row |
+      [*1..2].each do | column |
+        clear_display_section(row, column)
+      end
+    end
     write_display(0, 0, "Sonic Push")
     
     @pad_callbacks = []
     @control_callbacks = []
     @note_callbacks = []
+    @pitch_callbacks = []
     
     @sonic_pi.in_thread.call do
       @sonic_pi.loop.call do
@@ -40,6 +45,16 @@ class AbletonPush
         note, velocity = @sonic_pi.sync.call '/midi/ableton_push_user_port/1/1/control_change'
         @control_callbacks.each do | callback |
           callback.call note, velocity
+        end
+      end
+    end
+
+    @sonic_pi.in_thread.call do
+      @sonic_pi.loop.call do
+        @sonic_pi.use_real_time.call
+        pitch = @sonic_pi.sync.call '/midi/ableton_push_user_port/1/1/pitch_bend'
+        @pitch_callbacks.each do | callback |
+          callback.call pitch[0]
         end
       end
     end
@@ -91,6 +106,10 @@ class AbletonPush
   def register_note_callback(callback)
     @note_callbacks.push(callback)
   end
+
+  def register_pitch_callback(callback)
+    @pitch_callbacks.push(callback)
+  end
   
   def clear
     @color_grid.each_with_index do | row, row_index |
@@ -121,6 +140,7 @@ class AbletonPush
   end
 
   def clear_display_section(row, display_column)
+    #@sonic_pi.midi_sysex.call 240, 71, 127, 21, 28 + row, 0, 0, 247
     write_display row, display_column, ' ' * 17
   end
   
