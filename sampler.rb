@@ -1,6 +1,6 @@
 require_relative 'color-palette.rb'
 require_relative 'session-machine.rb'
-
+require_relative 'sampler-helper.rb'
 
 class Sampler
   SamplePad = Struct.new(:buffer, :is_playing, :bars, :amp, :mode, :row, :column)
@@ -9,7 +9,9 @@ class Sampler
     @sonic_pi = sonic_pi
     @push = push
     
-    @recording_grid = Array.new(4) { |i| Array.new(8) { |j| SamplePad.new(nil, false, nil, 2.0, :PLAY, i + 2, j) } }
+    @sampler_helper = SamplerHelper.new(sonic_pi, push)
+    
+    @recording_grid = Array.new(4) { |i| Array.new(8) { |j| SamplePad.new(nil, false, nil, 1.0, :PLAY, i + 2, j) } }
     @recording_sample = nil
     @editing_sample = nil
     @monitor_active = false
@@ -29,19 +31,19 @@ class Sampler
           4.times do | i |
             @sonic_pi.sample.call :elec_ping, amp: 2, rate: 0.8 if i % 4 == 0
             @sonic_pi.sample.call :elec_ping, amp: 1 if i % 4 != 0
-            color_sample @recording_sample, i % 2 == 0 ? PadColorPalette.red : PadColorPalette.black
+            @sampler_helper.color_sample @is_active_mode, @recording_sample, i % 2 == 0 ? PadColorPalette.red : PadColorPalette.black
             @sonic_pi.sleep.call 1
           end
           
           @sonic_pi.sync.call :master_cue
-          color_sample @recording_sample, PadColorPalette.red
+          @sampler_helper.color_sample @is_active_mode, @recording_sample, PadColorPalette.red
           
           reactivate_monitor = @monitor_active
           @monitor_active = false
           @sonic_pi.cue.call :monitor_cue
           
           @sonic_pi.with_fx.call :record, buffer: @recording_sample.buffer do
-            @sonic_pi.live_audio.call :rec, amp: 4, stereo: true
+            @sonic_pi.live_audio.call :rec, amp: 2, stereo: true
           end
           
           @sonic_pi.sleep.call SessionMachine.recording_bars * 4
@@ -71,45 +73,7 @@ class Sampler
   end
   
   def play(bar)
-    @recording_grid.each do | recording_row |
-      recording_row.each do | sample |
-        if sample.bars != nil
-          if bar % sample.bars == 0 and sample != @recording_sample
-            if sample.buffer != nil and sample.is_playing
-              color_sample sample, PadColorPalette.green
-              retrigger = SessionMachine.retrigger
-              if retrigger != nil and (@editing_sample == nil or sample == @editing_sample)
-                @sonic_pi.in_thread.call do
-                  steps = 8.0 * sample.bars
-                  (steps / retrigger).times do
-                    @sonic_pi.sample.call sample.buffer, amp: sample.amp, start: 0, finish: retrigger / steps
-                    @sonic_pi.sleep.call retrigger / 2.0
-                  end
-                end
-              else
-                if [:PLAY, :BACK].include? sample.mode
-                  @sonic_pi.sample.call sample.buffer, amp: sample.amp, rate: sample.mode == :PLAY ? 1 : -1
-                else
-                  @sonic_pi.in_thread.call do
-                    steps = 4 * sample.bars
-                    steps.times do | step |
-                      slice_idx = rand(steps - 1)
-                      slice_size = 1.0 / steps
-                      start = slice_idx * slice_size
-                      finish = start + slice_size
-                      @sonic_pi.sample.call sample.buffer, amp: sample.amp, start: start, finish: finish, rate: (sample.mode == :SLICE or (sample.mode == :SLIDE_RAND and rand(1) == 1) ? 1 : -1)
-                      @sonic_pi.sleep.call 1
-                    end
-                  end
-                end
-              end
-            elsif
-              color_sample sample, PadColorPalette.black
-            end
-          end
-        end
-      end
-    end
+    @sampler_helper.play(@is_active_mode, bar, @recording_grid, @recording_sample, @editing_sample)
   end
   
   def control_callback(note, velocity)
@@ -131,6 +95,18 @@ class Sampler
       if note == 3
         @monitor_active = !@monitor_active
         @sonic_pi.cue.call :monitor_cue
+      elsif note == 119
+        if @editing_sample != nil
+          @recording_grid.each do | recording_row |
+            recording_row.each do | sample |
+              if sample == @editing_sample
+                @sampler_helper.color_sample @is_active_mode, sample, PadColorPalette.grey
+                sample.is_playing = false
+                sample.buffer = nil
+              end
+            end
+          end
+        end
       end
     end
   end
@@ -151,35 +127,37 @@ class Sampler
   end
   
   def is_active_mode=is_active_mode
+    @is_active_mode = is_active_mode
     if is_active_mode
       @recording_grid.each do | recording_row |
         recording_row.each do | sample |
-          if sample.is_playing
-            color_sample sample, PadColorPalette.green
-          end
+          @sampler_helper.auto_color_sample(@is_active_mode, sample)
         end
       end
     else
       clear_editing_sample()
     end
-    @is_active_mode = is_active_mode
   end
   
   def clear_editing_sample
     @editing_sample = nil
+    @push.color_note 119, NoteColorPalette.off
   end
   
   def arm_edit_or_play(row, column)
     sample = @recording_grid[row][column]
-    if sample != @editing_sample
+    is_editing = sample == @editing_sample
+    if !is_editing
+      @push.color_note 119, NoteColorPalette.lit
       @editing_sample = sample
       print_editing_menu()
-    elsif sample.buffer
-      color_sample sample, PadColorPalette.grey
-      @editing_sample = sample
-      sample.is_playing = !sample.is_playing
-      print_editing_menu()
-      
+    end
+    
+    if sample.buffer != nil
+      if is_editing
+        @sampler_helper.color_sample @is_active_mode, sample, PadColorPalette.grey
+        sample.is_playing = !sample.is_playing
+      end
     else
       record row, column
     end
@@ -192,18 +170,10 @@ class Sampler
     
     sample = @recording_grid[row][column]
     sample.bars = SessionMachine.recording_bars
-    @recording_sample = @editing_sample = sample
+    @recording_sample = sample
     
-    color_sample @recording_sample, PadColorPalette.red
+    @sampler_helper.color_sample @is_active_mode, @recording_sample, PadColorPalette.red
     print_editing_menu()
-  end
-  
-  def color_sample(recording_sample, color)
-    if not @is_active_mode
-      return
-    end
-    
-    @push.color_row_column recording_sample.row, recording_sample.column, color
   end
   
   def print_editing_menu()

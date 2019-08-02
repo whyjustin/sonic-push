@@ -1,6 +1,6 @@
 require_relative 'clock.rb'
 require_relative 'helper.rb'
-
+require_relative 'color-palette.rb'
 
 class SessionMachine
   Mixer = Struct.new(:hpf, :lpf)
@@ -64,6 +64,9 @@ class SessionMachine
     
     @mode = :SESSION_MODE
     print_editing_menu()
+
+    @is_recording = false
+    @save_location = nil
     
     @sonic_pi.live_loop.call :session_clock do
       @@current_bar = @@current_bar == 2 ** (@@recording_bar_options - 1) ? 1 : @@current_bar + 1
@@ -92,6 +95,11 @@ class SessionMachine
     @push.register_control_callback(method(:control_callback))
     @push.register_pitch_callback(method(:pitch_callback))
   end
+
+  def set_save_location(save_location)
+    @save_location = save_location
+    @push.color_note 86, NoteColorPalette.dim
+  end
   
   def pad_callback(row, column, velocity)
     if not @mode == :SESSION_MODE
@@ -103,7 +111,7 @@ class SessionMachine
       drum_track = @drum_machine.drum_tracks[drum_track_index]
       if !drum_track.is_playing
         if drum_track.bars != nil
-          set_recording_bar_power (Math::log(drum_track.bars) / Math::log(2)).to_i - 1
+          set_recording_bar_power (Math::log(drum_track.bars) / Math::log(2)).to_i
         end
         
         @drum_machine.edit drum_track_index
@@ -127,6 +135,19 @@ class SessionMachine
       elsif note == 51
         @sampler.clear_editing_sample()
         switch_mode :SESSION_MODE
+      elsif note == 86
+        if @save_location != nil
+          if !@is_recording
+            @is_recording = true
+            @sonic_pi.osc_send.call 'localhost', 4557, '/start-recording', 'sonic-push'
+            @push.color_note 86, NoteColorPalette.lit
+          else
+            @sonic_pi.osc_send.call 'localhost', 4557, '/stop-recording', 'sonic-push'
+            @push.color_note 86, NoteColorPalette.dim
+            @sonic_pi.sleep.call 0.5
+            @sonic_pi.osc_send.call 'localhost', 4557, '/save-recording', 'sonic-push', "#{@save_location}/sonic-push.wav"
+          end
+        end
       end
     end
     if note == 78
@@ -139,7 +160,7 @@ class SessionMachine
       print_editing_menu()
     end
   end
-
+  
   def note_callback(note, velocity)
     if velocity == 0 and note == 12
       @@retrigger = nil
@@ -200,22 +221,25 @@ class SessionMachine
   
   def switch_mode(mode)
     @mode = mode
+    set_viewing_bar 0
+    
     case mode
     when :DRUM_MODE
+      # Set active mode to true to prevent coloring playing pads
+      @drum_machine.is_active_mode = true
       @push.clear
       @sonic_pi.sleep.call 0.1
       
       @sampler.is_active_mode = false
+      # Set active mode to true to configure active mode
       @drum_machine.is_active_mode = true
-      set_viewing_bar 0
       @push.color_note 51, NoteColorPalette.dim
     when :SESSION_MODE
       @push.clear
-      @drum_machine.clear_editing_menu()
       @sonic_pi.sleep.call 0.1
       
-      print_editing_menu()
       @drum_machine.is_active_mode = false
+      print_editing_menu()
       @sampler.is_active_mode = true
       @push.color_note 51, NoteColorPalette.lit
     end

@@ -1,0 +1,48 @@
+23a24,27
+>       def midi_sysex(*args)
+>         midi_raw(*args)
+>       end
+> 
+744a749,750
+>         params << nil while params.size < 3
+>         params       = params.map { |p| p.to_f.round }
+746,749d751
+<         a, b, c      = params
+<         a            = a.to_f.round
+<         b            = b.to_f.round
+<         c            = c.to_f.round
+755c757
+<             __midi_send_timed("/#{p}/raw", a, b, c)
+---
+>             __midi_send_timed("/#{p}/raw", *params)
+758c760
+<           __midi_message "midi_raw #{a}, #{b}, #{c}, port: #{port}"
+---
+>           __midi_message "midi_raw #{params * ', '}, port: #{port}"
+760c762
+<           __midi_message "midi_raw #{a}, #{b}, #{c}, on: 0"
+---
+>           __midi_message "midi_raw #{params * ', '}, on: 0"
+762c764,783
+<         nil
+---
+> 
+>         # params, opts = split_params_and_merge_opts_array(args)
+>         # opts         = current_midi_defaults.merge(opts)
+>         # a, b, c      = params
+>         # a            = a.to_f.round
+>         # b            = b.to_f.round
+>         # c            = c.to_f.round
+>         # ports        = __resolve_midi_ports(opts)
+>         # on_val       = opts.fetch(:on, 1)
+> 
+>         # if truthy?(on_val)
+>         #   ports.each do |p|
+>         #     __midi_send_timed("/#{p}/raw", a, b, c)
+>         #   end
+>         #   port = pp_el_or_list(ports)
+>         #   __midi_message "midi_raw #{a}, #{b}, #{c}, port: #{port}"
+>         # else
+>         #   __midi_message "midi_raw #{a}, #{b}, #{c}, on: 0"
+>         # end
+>         # nil

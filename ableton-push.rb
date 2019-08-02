@@ -1,6 +1,14 @@
 require_relative 'color-palette.rb'
 
 class AbletonPush
+  def self.pad_column_size()
+    return 8
+  end
+
+  def self.drum_row_size()
+    return 2
+  end
+
   def initialize(sonic_pi)
     @sonic_pi = sonic_pi
     

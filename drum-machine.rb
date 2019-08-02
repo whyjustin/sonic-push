@@ -2,38 +2,23 @@ require_relative 'clock.rb'
 require_relative 'color-palette.rb'
 require_relative 'session-machine.rb'
 require_relative 'helper.rb'
+require_relative 'drum-machine-helper.rb'
 
 class DrumMachine
-  DrumTrack = Struct.new(:is_playing, :bars, :swing, :reverb_mix, :reverb_control, :row, :column, :drums)
-  Drum = Struct.new(:sample, :color, :notes)
-  DrumNote = Struct.new(:active, :volume)
-  
   def initialize(sonic_pi, push)
     @sonic_pi = sonic_pi
     @push = push
+    @drum_machine_helper = DrumMachineHelper.new(@sonic_pi, @push)
     
     @mode = :DRUM_NOTE_MODE
     @current_drum_edit = 0
     
     @drum_steps_per_bar = SessionMachine.steps_per_bar * 2
     
-    @kit = :default_kit
+
+    @kits = [ @drum_machine_helper.get_default_kit() ]
     
-    @drum_tracks = []
-    2.times do | i |
-      8.times do | j |
-        @drum_tracks.push(DrumTrack.new(false, nil, 0, 0.0, nil, i, j, [
-                                          Drum.new(:drum_bass_hard, PadColorPalette.blue, []),
-                                          Drum.new(:drum_snare_hard, PadColorPalette.green, []),
-                                          Drum.new(:drum_tom_lo_hard, PadColorPalette.red, []),
-                                          Drum.new(:drum_tom_mid_hard, PadColorPalette.teal, []),
-                                          Drum.new(:drum_tom_hi_hard, PadColorPalette.yellow, []),
-                                          Drum.new(:drum_cowbell, PadColorPalette.magenta, []),
-                                          Drum.new(:drum_cymbal_closed, PadColorPalette.lime, []),
-                                          Drum.new(:drum_cymbal_open, PadColorPalette.violet, [])
-        ]))
-      end
-    end
+    @drum_tracks = @drum_machine_helper.build_drum_tracks()
     
     @is_active_mode = false
     
@@ -52,30 +37,29 @@ class DrumMachine
             current_bar = SessionMachine.current_bar
           end
           @sonic_pi.with_swing.call drum_track.swing, pulse: 2 do
+            @drum_machine_helper.auto_color_drum_track(@is_active_mode, drum_track)
             if drum_track.bars != nil and drum_track.is_playing
-              color_drum_track drum_track, PadColorPalette.green
               bar_step = current_bar % drum_track.bars * @drum_steps_per_bar + step
               
               retrigger = SessionMachine.retrigger
               if retrigger != nil and (@editing_drums == nil or drum_track == @editing_drums)
                 bar_step = bar_step % retrigger
               end
-
+              
+              kit = @kits[drum_track.kit_index]
               drum_track.drums.each_with_index do | drum, index |
-                if @kit != :default_kit
-                  @sonic_pi.sample.call @kit, index, amp: drum.notes[bar_step].volume / 8.0 if drum.notes[bar_step].active == true
+                if kit.is_a? String
+                  @sonic_pi.sample.call kit, index, amp: drum.notes[bar_step].volume / 8.0 if drum.notes[bar_step].active == true
                 else
-                  @sonic_pi.sample.call drum.sample, amp: drum.notes[bar_step].volume / 8.0 if drum.notes[bar_step].active == true
+                  @sonic_pi.sample.call kit[index], amp: drum.notes[bar_step].volume / 8.0 if drum.notes[bar_step].active == true
                 end
               end
-            else
-              color_drum_track drum_track, PadColorPalette.black
             end
           end
           @sonic_pi.sleep.call 0.5
         end
       end
-
+      
       #Throttle Initialization
       @sonic_pi.sleep.call 0.1
     end
@@ -91,7 +75,7 @@ class DrumMachine
   def toggle_play(track_number)
     drum_track = @drum_tracks[track_number]
     drum_track.is_playing = !drum_track.is_playing
-    color_drum_track drum_track, PadColorPalette.grey
+    @drum_machine_helper.color_drum_track @is_active_mode, drum_track, PadColorPalette.grey
   end
   
   def edit(track_number)
@@ -100,7 +84,7 @@ class DrumMachine
   end
   
   def load_kit(kit)
-    @kit = kit
+    @kits.push(kit)
   end
   
   def set_recording_bar_power()
@@ -116,7 +100,7 @@ class DrumMachine
               if last_bar_step >= 0 and drum.notes.length >= last_bar_step
                 drum.notes.push(drum.notes[last_bar_step].dup)
               else
-                drum.notes.push(DrumNote.new(false, 4))
+                drum.notes.push(DrumMachineHelper::DrumNote.new(false, 4))
               end
             end
           end
@@ -139,15 +123,12 @@ class DrumMachine
     @is_active_mode = is_active_mode
     if is_active_mode
       switch_mode(:DRUM_NOTE_MODE)
-      print_editing_menu()
+      @drum_machine_helper.print_editing_menu(@is_active_mode, @editing_drums)
     else
+      @drum_machine_helper.clear_editing_menu()
       @editing_drums = nil
       @drum_tracks.each do | drum_track |
-        if drum_track.bars != nil and drum_track.is_playing
-          color_drum_track drum_track, PadColorPalette.green
-        else
-          color_drum_track drum_track, PadColorPalette.black
-        end
+        @drum_machine_helper.auto_color_drum_track(@is_active_mode, drum_track)
       end
     end
   end
@@ -212,48 +193,29 @@ class DrumMachine
         switch_mode :DRUM_EDIT_MODE
       end
     elsif note == 71
-      if @editing_drums != nil
+      drum_setting_update {
         @editing_drums.swing = Helper.within(@editing_drums.swing + (velocity == 1 ? 0.01 : -0.01), -0.5, 0.5).round(2)
-        print_editing_menu()
-      end
+      }
     elsif note == 72
-      if @editing_drums != nil
-        @editing_drums.reverb_mix = Helper.within(@editing_drums.reverb_mix + (velocity == 1 ? 0.01 : -0.01), 0.0, 1.0).round(2)
+      drum_setting_update {
+        @editing_drums.reverb_mix = Helper.within(@editing_drums.reverb_mix + (velocity == 1 ? 0.05 : -0.05), 0.0, 1.0).round(2)
         @sonic_pi.control.call @editing_drums.reverb_control, mix: @editing_drums.reverb_mix
-        print_editing_menu()
-      end
+      }
+    elsif note == 73
+      drum_setting_update {
+        @editing_drums.kit_index = Helper.within(@editing_drums.kit_index + (velocity == 1 ? 1 : -1), 0, @kits.length - 1).round(0)
+      }
+    end
+  end
+  
+  def drum_setting_update
+    if @editing_drums != nil
+      yield
+      @drum_machine_helper.print_editing_menu(@is_active_mode, @editing_drums)
     end
   end
   
   def get_viewing_note(drum, column)
     return drum.notes[SessionMachine.viewing_bar * @drum_steps_per_bar + column]
-  end
-  
-  def color_drum_track(drum_track, color)
-    if @is_active_mode
-      return
-    end
-    
-    @push.color_row_column drum_track.row, drum_track.column, color
-  end
-  
-  def print_editing_menu()
-    if not @is_active_mode
-      return
-    end
-    
-    if @editing_drums != nil
-      clear_editing_menu()
-      @sonic_pi.sleep.call 0.1
-      @push.write_display(0, 1, "Drum")
-      @push.write_display(1, 1, "Swing #{@editing_drums.swing}")
-      @push.write_display(2, 1, "Reverb #{@editing_drums.reverb_mix}")
-    end
-  end
-
-  def clear_editing_menu()
-    @push.clear_display_section(0, 1)
-    @push.clear_display_section(1, 1)
-    @push.clear_display_section(2, 1)
   end
 end

@@ -1,0 +1,206 @@
+647a648,653
+>       # def __osc_send(host, port, path, *args)
+>       #   t = __system_thread_locals.get(:sonic_pi_spider_time) + current_sched_ahead_time
+>       #   @osc_server.send_ts(t, "localhost", @osc_router_port, "/send_after", host, port, path, *args)
+>       # end
+> 
+> 
+649a656,663
+>         args.map! do |arg|
+>           case arg
+>           when Numeric, String
+>             arg
+>           else
+>             arg.inspect
+>           end
+>         end
+653d666
+< 
+902,904c915,916
+< 
+<       def time_warp(times=0, params=nil, &block)
+<         __schedule_delayed_blocks_and_messages!
+---
+> def time_warp(times=0, params=nil, &block)
+>   __schedule_delayed_blocks_and_messages!
+907,958c919,968
+<         raise ArgumentError, "time_warp requires a do/end block" unless block
+<         prev_ctl_deltas = __system_thread_locals.get(:sonic_pi_local_control_deltas)
+<         prev_cache = __system_thread_locals.get(:sonic_pi_spider_time_state_cache, [])
+<         had_params = params
+<         times = [times] if times.is_a? Numeric
+< 
+<         # When no params are specified, pass the times through as params
+<         params ||= times
+<         params_size = params.size
+< 
+<         raise ArgumentError, "params needs to be a list-like thing" unless params.respond_to? :[]
+<         raise ArgumentError, "times needs to be a list-like thing" unless times.respond_to? :each_with_index
+< 
+<         vt_orig = __system_thread_locals.get :sonic_pi_spider_time
+<         density = __thread_locals.get(:sonic_pi_local_spider_density) || 1.0
+<         orig_sleep_mul_w_density = __system_thread_locals.get(:sonic_pi_spider_sleep_mul) * density
+<         orig_beat = __system_thread_locals.get(:sonic_pi_spider_beat)
+<         sat = current_sched_ahead_time
+<         already_in_time_warp = __system_thread_locals.get :sonic_pi_spider_in_time_warp
+< 
+<         __system_thread_locals.set(:sonic_pi_spider_time_warp_start, vt_orig.freeze) unless  already_in_time_warp
+<         __system_thread_locals.set_local :sonic_pi_spider_in_time_warp, true
+< 
+<         times.each_with_index do |delta, idx|
+<           sleep_time = delta * orig_sleep_mul_w_density
+<           new_time = vt_orig + sleep_time
+< 
+<           raise TimeTravelError, "Time travel error - a jump back of #{delta} is too far.\nSorry, although it would be amazing, you can't go back in time beyond the sched_ahead time of #{sat}" if (Time.now - sat) > new_time
+< 
+<           __change_time!(new_time)
+<           __system_thread_locals.set :sonic_pi_spider_beat, orig_beat + delta
+<           __system_thread_locals.set_local :sonic_pi_local_control_deltas, {}
+<           __system_thread_locals.set_local(:sonic_pi_spider_time_state_cache, [])
+< 
+<           case block.arity
+<           when 0
+<             block.call
+<           when 1
+<             block.call(params[idx % params_size])
+<           when 2
+<             if had_params
+<               block.call(delta, params[idx % params_size])
+<             else
+<               block.call(delta, idx)
+<             end
+<           when 3
+<             block.call(t, params[idx % params_size], idx)
+<           else
+<             raise ArgumentError, "block for time_warp should only accept 0, 1, 2 or 3 parameters. You gave: #{block.arity}."
+<           end
+<           __schedule_delayed_blocks_and_messages!
+<         end
+---
+>   raise ArgumentError, "time_warp requires a do/end block" unless block
+>   prev_ctl_deltas = __system_thread_locals.get(:sonic_pi_local_control_deltas)
+>   prev_cache = __system_thread_locals.get(:sonic_pi_spider_time_state_cache, [])
+>   had_params = params
+>   times = [times] if times.is_a? Numeric
+> 
+>   # When no params are specified, pass the times through as params
+>   params ||= times
+>   params_size = params.size
+> 
+>   raise ArgumentError, "params needs to be a list-like thing" unless params.respond_to? :[]
+>   raise ArgumentError, "times needs to be a list-like thing" unless times.respond_to? :each_with_index
+> 
+>   vt_orig = __system_thread_locals.get :sonic_pi_spider_time
+>   density = __thread_locals.get(:sonic_pi_local_spider_density) || 1.0
+>   orig_sleep_mul_w_density = __system_thread_locals.get(:sonic_pi_spider_sleep_mul) * density
+>   orig_beat = __system_thread_locals.get(:sonic_pi_spider_beat)
+>   sat = current_sched_ahead_time
+>   already_in_time_warp = __system_thread_locals.get :sonic_pi_spider_in_time_warp
+> 
+>   __system_thread_locals.set(:sonic_pi_spider_time_warp_start, vt_orig.freeze) unless  already_in_time_warp
+>   __system_thread_locals.set_local :sonic_pi_spider_in_time_warp, true
+> 
+>   times.each_with_index do |delta, idx|
+>     sleep_time = delta * orig_sleep_mul_w_density
+>     new_time = vt_orig + sleep_time
+> 
+>     __change_time!(new_time)
+>     __system_thread_locals.set :sonic_pi_spider_beat, orig_beat + delta
+>     __system_thread_locals.set_local :sonic_pi_local_control_deltas, {}
+>     __system_thread_locals.set_local(:sonic_pi_spider_time_state_cache, [])
+> 
+>     case block.arity
+>     when 0
+>       block.call
+>     when 1
+>       block.call(params[idx % params_size])
+>     when 2
+>       if had_params
+>         block.call(delta, params[idx % params_size])
+>       else
+>         block.call(delta, idx)
+>       end
+>     when 3
+>       block.call(t, params[idx % params_size], idx)
+>     else
+>       raise ArgumentError, "block for time_warp should only accept 0, 1, 2 or 3 parameters. You gave: #{block.arity}."
+>     end
+>     __schedule_delayed_blocks_and_messages!
+>   end
+960,965c970,1038
+<         __change_time!(vt_orig)
+<         __system_thread_locals.set :sonic_pi_spider_beat, orig_beat
+<         __system_thread_locals.set_local :sonic_pi_spider_in_time_warp, already_in_time_warp
+<         __system_thread_locals.set_local :sonic_pi_local_control_deltas, prev_ctl_deltas
+<         __system_thread_locals.set_local(:sonic_pi_spider_time_state_cache, prev_cache)
+<       end
+---
+>   __change_time!(vt_orig)
+>   __system_thread_locals.set :sonic_pi_spider_beat, orig_beat
+>   __system_thread_locals.set_local :sonic_pi_spider_in_time_warp, already_in_time_warp
+>   __system_thread_locals.set_local :sonic_pi_local_control_deltas, prev_ctl_deltas
+>   __system_thread_locals.set_local(:sonic_pi_spider_time_state_cache, prev_cache)
+> end
+>       # def time_warp(times=0, params=nil, &block)
+>       #   __schedule_delayed_blocks_and_messages!
+> 
+> 
+>       #   raise ArgumentError, "time_warp requires a do/end block" unless block
+>       #   prev_ctl_deltas = __system_thread_locals.get(:sonic_pi_local_control_deltas)
+>       #   prev_cache = __system_thread_locals.get(:sonic_pi_spider_time_state_cache, [])
+>       #   had_params = params
+>       #   times = [times] if times.is_a? Numeric
+> 
+>       #   # When no params are specified, pass the times through as params
+>       #   params ||= times
+>       #   params_size = params.size
+> 
+>       #   raise ArgumentError, "params needs to be a list-like thing" unless params.respond_to? :[]
+>       #   raise ArgumentError, "times needs to be a list-like thing" unless times.respond_to? :each_with_index
+> 
+>       #   vt_orig = __system_thread_locals.get :sonic_pi_spider_time
+>       #   density = __thread_locals.get(:sonic_pi_local_spider_density) || 1.0
+>       #   orig_sleep_mul_w_density = __system_thread_locals.get(:sonic_pi_spider_sleep_mul) * density
+>       #   orig_beat = __system_thread_locals.get(:sonic_pi_spider_beat)
+>       #   sat = current_sched_ahead_time
+>       #   already_in_time_warp = __system_thread_locals.get :sonic_pi_spider_in_time_warp
+> 
+>       #   __system_thread_locals.set(:sonic_pi_spider_time_warp_start, vt_orig.freeze) unless  already_in_time_warp
+>       #   __system_thread_locals.set_local :sonic_pi_spider_in_time_warp, true
+> 
+>       #   times.each_with_index do |delta, idx|
+>       #     sleep_time = delta * orig_sleep_mul_w_density
+>       #     new_time = vt_orig + sleep_time
+> 
+>       #     raise TimeTravelError, "Time travel error - a jump back of #{delta} is too far.\nSorry, although it would be amazing, you can't go back in time beyond the sched_ahead time of #{sat}" if (Time.now - sat) > new_time
+> 
+>       #     __change_time!(new_time)
+>       #     __system_thread_locals.set :sonic_pi_spider_beat, orig_beat + delta
+>       #     __system_thread_locals.set_local :sonic_pi_local_control_deltas, {}
+>       #     __system_thread_locals.set_local(:sonic_pi_spider_time_state_cache, [])
+> 
+>       #     case block.arity
+>       #     when 0
+>       #       block.call
+>       #     when 1
+>       #       block.call(params[idx % params_size])
+>       #     when 2
+>       #       if had_params
+>       #         block.call(delta, params[idx % params_size])
+>       #       else
+>       #         block.call(delta, idx)
+>       #       end
+>       #     when 3
+>       #       block.call(t, params[idx % params_size], idx)
+>       #     else
+>       #       raise ArgumentError, "block for time_warp should only accept 0, 1, 2 or 3 parameters. You gave: #{block.arity}."
+>       #     end
+>       #     __schedule_delayed_blocks_and_messages!
+>       #   end
+> 
+>       #   __change_time!(vt_orig)
+>       #   __system_thread_locals.set :sonic_pi_spider_beat, orig_beat
+>       #   __system_thread_locals.set_local :sonic_pi_spider_in_time_warp, already_in_time_warp
+>       #   __system_thread_locals.set_local :sonic_pi_local_control_deltas, prev_ctl_deltas
+>       #   __system_thread_locals.set_local(:sonic_pi_spider_time_state_cache, prev_cache)
+>       # end
