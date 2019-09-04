@@ -1,0 +1,6 @@
+406,407c406,407
+<       `jack_connect SuperCollider:in_1 system:capture_1`
+<       `jack_connect SuperCollider:in_2 system:capture_2`
+---
+>       # `jack_connect SuperCollider:in_1 system_capture_1`
+>       # `jack_connect SuperCollider:in_2 system_capture_2`

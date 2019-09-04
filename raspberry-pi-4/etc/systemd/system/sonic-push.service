@@ -1,0 +1,21 @@
+[Unit]
+Description=Sonic Push
+After=network.target
+After=sound.target
+After=local-fs.target
+Requires=network.target
+Requires=sound.target
+Requires=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/home/pi/startup.sh
+StandardOutput=journal+console
+StandardError=journal+console
+User=pi
+LimitMEMLOCK=infinity
+LimitRTPRIO=infinity
+# Also see DropInPaths=/etc/systemd/system.control/sonic-push.service.d
+
+[Install]
+WantedBy=default.target

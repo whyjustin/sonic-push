@@ -11,15 +11,14 @@ class Sampler
     
     @sampler_helper = SamplerHelper.new(sonic_pi, push)
     
-    @recording_grid = Array.new(4) { |i| Array.new(8) { |j| SamplePad.new(nil, false, nil, 1.0, :PLAY, i + 2, j) } }
+    @recording_grid = Array.new(4) { |i| Array.new(8) { |j| SamplePad.new(nil, false, nil, 1.0, :PLAY, i + AbletonPush.drum_row_size() + AbletonPush.chop_sample_row_size(), j) } }
     @recording_sample = nil
     @editing_sample = nil
-    @monitor_active = false
     @is_active_mode = true
     
     @push.register_control_callback(method(:control_callback))
     
-    @sonic_pi.live_loop.call "record" do
+    @sonic_pi.live_loop.call 'record' do
       @sonic_pi.use_bpm.call Clock.bpm
       @sonic_pi.sync.call :master_cue
       
@@ -31,19 +30,19 @@ class Sampler
           4.times do | i |
             @sonic_pi.sample.call :elec_ping, amp: 2, rate: 0.8 if i % 4 == 0
             @sonic_pi.sample.call :elec_ping, amp: 1 if i % 4 != 0
-            @sampler_helper.color_sample @is_active_mode, @recording_sample, i % 2 == 0 ? PadColorPalette.red : PadColorPalette.black
+            @sampler_helper.color_sample @recording_sample, i % 2 == 0 ? PadColorPalette.red : PadColorPalette.black
             @sonic_pi.sleep.call 1
           end
           
           @sonic_pi.sync.call :master_cue
-          @sampler_helper.color_sample @is_active_mode, @recording_sample, PadColorPalette.red
+          @sampler_helper.color_sample @recording_sample, PadColorPalette.red
           
-          reactivate_monitor = @monitor_active
-          @monitor_active = false
-          @sonic_pi.cue.call :monitor_cue
-          
-          @sonic_pi.with_fx.call :record, buffer: @recording_sample.buffer do
-            @sonic_pi.live_audio.call :rec, amp: 2, stereo: true
+          @sonic_pi.live_audio.call :mon, :stop
+
+          @sonic_pi.with_fx.call :sound_out_stereo, output: 100, amp: SessionMachine.mute_while_recording ? 0 : 1 do
+            @sonic_pi.with_fx.call :record, buffer: @recording_sample.buffer, pre_amp: SessionMachine.recording_pre_amp do
+              @sonic_pi.live_audio.call :rec, amp: 1, stereo: true
+            end
           end
           
           @sonic_pi.sleep.call SessionMachine.recording_bars * 4
@@ -51,29 +50,13 @@ class Sampler
           @sonic_pi.live_audio.call :rec, :stop
           @recording_sample.is_playing = true
           @recording_sample = nil
-          
-          if reactivate_monitor
-            @monitor_active = true
-            @sonic_pi.cue.call :monitor_cue
-          end
         end
       end
-    end
-    
-    @sonic_pi.live_loop.call :monitor do
-      # Monitor in it's own loop waiting for a change to @monitor_active and a cue
-      @sonic_pi.sync.call :monitor_cue
-      if @monitor_active
-        @sonic_pi.live_audio.call :mon, amp: 4, stereo: true
-      else
-        @sonic_pi.live_audio.call :mon, :stop
-      end
-      @sonic_pi.sleep.call 0.5
     end
   end
   
   def play(bar)
-    @sampler_helper.play(@is_active_mode, bar, @recording_grid, @recording_sample, @editing_sample)
+    @sampler_helper.play(bar, @recording_grid, @recording_sample, @editing_sample)
   end
   
   def control_callback(note, velocity)
@@ -91,21 +74,19 @@ class Sampler
         @editing_sample.mode = next_mode(@editing_sample.mode)
         print_editing_menu()
       end
-    elsif velocity = 127
-      if note == 3
-        @monitor_active = !@monitor_active
-        @sonic_pi.cue.call :monitor_cue
-      elsif note == 119
+    elsif velocity == 127
+      if note == 119
         if @editing_sample != nil
           @recording_grid.each do | recording_row |
             recording_row.each do | sample |
               if sample == @editing_sample
-                @sampler_helper.color_sample @is_active_mode, sample, PadColorPalette.grey
+                @sampler_helper.color_sample sample, PadColorPalette.grey
                 sample.is_playing = false
                 sample.buffer = nil
               end
             end
           end
+          clear_editing_sample()
         end
       end
     end
@@ -128,10 +109,10 @@ class Sampler
   
   def is_active_mode=is_active_mode
     @is_active_mode = is_active_mode
-    if is_active_mode
+    if SessionMachine.mode == :SESSION_MODE
       @recording_grid.each do | recording_row |
         recording_row.each do | sample |
-          @sampler_helper.auto_color_sample(@is_active_mode, sample)
+          @sampler_helper.auto_color_sample(sample)
         end
       end
     else
@@ -141,26 +122,24 @@ class Sampler
   
   def clear_editing_sample
     @editing_sample = nil
+    clear_editing_menu()
     @push.color_note 119, NoteColorPalette.off
   end
   
-  def arm_edit_or_play(row, column)
+  def arm_or_toggle_play(row, column)
     sample = @recording_grid[row][column]
-    is_editing = sample == @editing_sample
-    if !is_editing
-      @push.color_note 119, NoteColorPalette.lit
-      @editing_sample = sample
-      print_editing_menu()
-    end
-    
     if sample.buffer != nil
-      if is_editing
-        @sampler_helper.color_sample @is_active_mode, sample, PadColorPalette.grey
-        sample.is_playing = !sample.is_playing
-      end
+      @sampler_helper.color_sample sample, PadColorPalette.grey
+      sample.is_playing = !sample.is_playing
     else
       record row, column
     end
+  end
+
+  def edit(row, column)
+    @push.color_note 119, NoteColorPalette.lit
+    @editing_sample = @recording_grid[row][column]
+    print_editing_menu()
   end
   
   def record(row, column)
@@ -172,16 +151,15 @@ class Sampler
     sample.bars = SessionMachine.recording_bars
     @recording_sample = sample
     
-    @sampler_helper.color_sample @is_active_mode, @recording_sample, PadColorPalette.red
+    @sampler_helper.color_sample @recording_sample, PadColorPalette.red
     print_editing_menu()
   end
   
   def print_editing_menu()
-    if not @is_active_mode
+    if SessionMachine.mode != :SESSION_MODE
       return
     end
     
-    clear_editing_menu()
     if @editing_sample != nil
       @push.write_display(0, 1, "Sample")
       @push.write_display(1, 1, "Amp #{@editing_sample.amp}")

@@ -15,6 +15,9 @@ class Clock
       sonic_pi.cue.call :master_cue
       
       8.times do | i |
+        if i % 2 == 0
+          sonic_pi.midi_clock_beat.call
+        end
         if @enable
           beat = @beats[i]
           sonic_pi.sample.call :elec_tick, amp: 1, rate: 0.8 if beat == 1
@@ -45,7 +48,6 @@ class Clock
   end
   
   def print_bpm()
-    @push.clear_display_section(3, 0)
-    @push.write_display(3, 0, "BPM: #{@@bpm}")
+    @push.write_display(3, 0, "BPM #{@@bpm}")
   end
 end

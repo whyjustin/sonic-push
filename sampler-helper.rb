@@ -9,25 +9,29 @@ class SamplerHelper
     @push = push
   end
 
-  def play(is_active_mode, bar, recording_grid, recording_sample, editing_sample)
+  def play(bar, recording_grid, recording_sample, editing_sample)
     recording_grid.each do | recording_row |
       recording_row.each do | sample |
         if sample.bars != nil
           if bar % sample.bars == 0 and sample != recording_sample
-            auto_color_sample(is_active_mode, sample)
+            auto_color_sample(sample)
             if sample.buffer != nil and sample.is_playing
               retrigger = SessionMachine.retrigger
               if retrigger != nil and (@editing_sample == nil or sample == editing_sample)
                 @sonic_pi.in_thread.call do
                   steps = 8.0 * sample.bars
-                  (steps / retrigger).times do
-                    @sonic_pi.sample.call sample.buffer, amp: sample.amp, start: 0, finish: retrigger / steps
-                    @sonic_pi.sleep.call retrigger / 2.0
+                  @sonic_pi.time_warp.call (-1 * Clock.bpm / 60.0 * SessionMachine.latency) do
+                    (steps / retrigger).times do
+                      @sonic_pi.sample.call sample.buffer, amp: sample.amp, finish: retrigger / steps
+                      @sonic_pi.sleep.call retrigger / 2.0
+                    end
                   end
                 end
               else
                 if [:PLAY, :BACK].include? sample.mode
-                  @sonic_pi.sample.call sample.buffer, amp: sample.amp, rate: sample.mode == :PLAY ? 1 : -1
+                  @sonic_pi.time_warp.call (-1 * Clock.bpm / 60.0 * SessionMachine.latency) do
+                    @sonic_pi.sample.call sample.buffer, amp: sample.amp, rate: sample.mode == :PLAY ? 1 : -1
+                  end
                 else
                   @sonic_pi.in_thread.call do
                     steps = 4 * sample.bars
@@ -49,20 +53,20 @@ class SamplerHelper
     end
   end
 
-  def auto_color_sample(is_active_mode, sample)
+  def auto_color_sample(sample)
     if sample.buffer != nil
       if sample.is_playing
-        color_sample is_active_mode, sample, PadColorPalette.green
+        color_sample sample, PadColorPalette.green
       else
-        color_sample is_active_mode, sample, PadColorPalette.blue
+        color_sample sample, PadColorPalette.blue
       end
     else
-      color_sample is_active_mode, sample, PadColorPalette.black
+      color_sample sample, PadColorPalette.black
     end
   end
   
-  def color_sample(is_active_mode, recording_sample, color)
-    if not is_active_mode
+  def color_sample(recording_sample, color)
+    if SessionMachine.mode != :SESSION_MODE
       return
     end
     

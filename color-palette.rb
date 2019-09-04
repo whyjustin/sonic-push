@@ -5,6 +5,10 @@ class PadColorPalette
     return Color.new(0, 0, 0)
   end
 
+  def self.white
+    return Color.new(255, 255, 255)
+  end
+
   def self.grey
     return Color.new(100, 100, 100)
   end
